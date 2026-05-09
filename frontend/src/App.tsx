@@ -114,10 +114,13 @@ export default function App() {
       pollingRef.current = setInterval(async () => {
         try {
           const statusRes = await api.get(`/chat/status/${jobId}`);
-          const { state, result, error, queuePosition, partialText } = statusRes.data;
+          const { state, result, error, queuePosition, partialText } =
+            statusRes.data;
 
           if (state === "waiting") {
-            setQueueStatus(`Queued — position #${queuePosition || "?"} in line`);
+            setQueueStatus(
+              `Queued — position #${queuePosition || "?"} in line`,
+            );
           } else if (state === "active") {
             setQueueStatus("Generating response...");
             // Show partial text as it streams in
@@ -149,9 +152,7 @@ export default function App() {
     } catch (err: any) {
       setQueueStatus(null);
       setLoading(false);
-      alert(
-        "Failed to queue: " + (err.response?.data?.message || err.message),
-      );
+      alert("Failed to queue: " + (err.response?.data?.message || err.message));
     }
   };
 
@@ -196,23 +197,25 @@ export default function App() {
 
     // Strip ALL markdown to pure plain text
     const plain = activeChat.response
-      .replace(/```[\s\S]*?```/g, (m: string) => m.replace(/```\w*\n?/g, "").trim())  // code fences → just code
-      .replace(/\*\*\*(.*?)\*\*\*/g, "$1")     // ***bold italic***
-      .replace(/\*\*(.*?)\*\*/g, "$1")          // **bold**
-      .replace(/\*(.*?)\*/g, "$1")              // *italic*
-      .replace(/__(.*?)__/g, "$1")              // __bold__
-      .replace(/_(.*?)_/g, "$1")                // _italic_
-      .replace(/~~(.*?)~~/g, "$1")              // ~~strike~~
-      .replace(/`([^`]+)`/g, "$1")              // `inline code`
-      .replace(/^#{1,6}\s+/gm, "")             // # headings → text
-      .replace(/^[\s]*[-*+]\s+/gm, "")         // - bullets → remove
-      .replace(/^\s*\d+\.\s+/gm, "")           // 1. numbered → remove
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")  // [link](url) → link
-      .replace(/!\[([^\]]*)\]\([^)]+\)/g, "")   // images → remove
-      .replace(/^>\s?/gm, "")                  // > blockquote → remove
-      .replace(/---+/g, "")                     // horizontal rules → remove
-      .replace(/\|[^\n]+\|/g, "")              // tables → remove
-      .replace(/\n{3,}/g, "\n\n")              // collapse blank lines
+      .replace(/```[\s\S]*?```/g, (m: string) =>
+        m.replace(/```\w*\n?/g, "").trim(),
+      ) // code fences → just code
+      .replace(/\*\*\*(.*?)\*\*\*/g, "$1") // ***bold italic***
+      .replace(/\*\*(.*?)\*\*/g, "$1") // **bold**
+      .replace(/\*(.*?)\*/g, "$1") // *italic*
+      .replace(/__(.*?)__/g, "$1") // __bold__
+      .replace(/_(.*?)_/g, "$1") // _italic_
+      .replace(/~~(.*?)~~/g, "$1") // ~~strike~~
+      .replace(/`([^`]+)`/g, "$1") // `inline code`
+      .replace(/^#{1,6}\s+/gm, "") // # headings → text
+      .replace(/^[\s]*[-*+]\s+/gm, "") // - bullets → remove
+      .replace(/^\s*\d+\.\s+/gm, "") // 1. numbered → remove
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // [link](url) → link
+      .replace(/!\[([^\]]*)\]\([^)]+\)/g, "") // images → remove
+      .replace(/^>\s?/gm, "") // > blockquote → remove
+      .replace(/---+/g, "") // horizontal rules → remove
+      .replace(/\|[^\n]+\|/g, "") // tables → remove
+      .replace(/\n{3,}/g, "\n\n") // collapse blank lines
       .trim();
 
     // Use fallback copy method (works on HTTP too)
@@ -428,9 +431,9 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col relative w-full">
+      <main className="flex-1 overflow-y-auto relative w-full">
         {/* Top bar with toggle */}
-        <div className="flex items-center gap-3 p-4 border-b border-white/5">
+        <div className="sticky top-0 z-10 bg-claude-bg-dark/80 backdrop-blur-md flex items-center gap-3 p-4 border-b border-white/5">
           <button
             onClick={() => setSidebarOpen(true)}
             className="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white transition-colors"
@@ -439,11 +442,11 @@ export default function App() {
             <PanelLeftOpen size={20} />
           </button>
           <span className="text-sm font-semibold text-claude-orange">
-            Claude
+            10Turtle AI
           </span>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto w-full">
+        <div className="p-8 max-w-4xl mx-auto w-full">
           {activeChat ? (
             <div className="space-y-8 animate-in fade-in duration-500">
               {activeChat.prompt && (
@@ -465,7 +468,9 @@ export default function App() {
                     </h2>
                     <p className="text-xs text-gray-500 mt-1">
                       {activeChat._isStreaming ? (
-                        <span className="text-claude-orange animate-pulse">● Generating live...</span>
+                        <span className="text-claude-orange animate-pulse">
+                          ● Generating live...
+                        </span>
                       ) : (
                         "Automation Response"
                       )}
@@ -485,7 +490,10 @@ export default function App() {
                     </button>
                   )}
                 </div>
-                <div ref={responseRef} className="prose prose-invert max-w-none text-gray-200 leading-loose">
+                <div
+                  ref={responseRef}
+                  className="prose prose-invert max-w-none text-gray-200 leading-loose"
+                >
                   <ReactMarkdown>{activeChat.response}</ReactMarkdown>
                   {activeChat._isStreaming && (
                     <span className="inline-block w-2 h-5 bg-claude-orange ml-1 animate-pulse rounded-sm" />
@@ -532,7 +540,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
+            <div className="h-[60vh] flex flex-col items-center justify-center text-center opacity-40">
               <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6">
                 <MessageSquare size={32} />
               </div>
@@ -547,11 +555,11 @@ export default function App() {
           )}
         </div>
 
-        {/* Input Area */}
-        <div className="p-8 max-w-4xl mx-auto w-full">
+        {/* Input Area — sticky bottom */}
+        <div className="sticky bottom-0 bg-claude-bg-dark/90 backdrop-blur-md p-8 pt-4 max-w-4xl mx-auto w-full">
           <div className="relative bg-claude-card-dark border border-white/20 rounded-2xl p-3 shadow-2xl focus-within:border-claude-orange transition-all">
             <textarea
-              placeholder="Send a message to Claude..."
+              placeholder="Send a message to 10Turtle AI..."
               className="w-full bg-transparent border-none outline-none resize-none min-h-[40px] text-gray-200 placeholder:text-gray-600 disabled:opacity-50"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -603,10 +611,13 @@ export default function App() {
 
             <div className="flex items-center justify-between mt-2 border-t border-white/5 pt-2">
               <div className="flex items-center gap-4">
-                <label className={cn(
-                  "flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer text-xs text-gray-400 hover:text-white transition-all",
-                  loading && "opacity-20 cursor-not-allowed pointer-events-none"
-                )}>
+                <label
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer text-xs text-gray-400 hover:text-white transition-all",
+                    loading &&
+                      "opacity-20 cursor-not-allowed pointer-events-none",
+                  )}
+                >
                   <Paperclip size={14} />
                   <span>
                     {files.length > 0
@@ -639,12 +650,13 @@ export default function App() {
             </div>
           </div>
           {loading && (
-            <p className="text-xs text-center text-claude-orange mt-2 animate-pulse font-medium">
-              {queueStatus || "Processing..."} — please don't reload or close the tab
+            <p className="text-lg text-center text-claude-orange mt-2 animate-pulse font-medium">
+              {queueStatus || "Processing..."}  Please don't reload or close 
+              the tab 
             </p>
           )}
           <p className="text-[10px] text-center text-gray-600 mt-4 uppercase tracking-[0.2em]">
-            Automated Claude Integration Engine
+            Automated Integration Engine
           </p>
         </div>
       </main>
