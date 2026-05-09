@@ -264,7 +264,7 @@ export default function App() {
             >
               Login
             </button>
-            <button
+            {/* <button
               onClick={() => setIsSignup(true)}
               className={cn(
                 "flex-1 py-2 text-sm font-medium rounded-md transition-all",
@@ -274,7 +274,7 @@ export default function App() {
               )}
             >
               Signup
-            </button>
+            </button> */}
           </div>
 
           <form onSubmit={handleAuth} className="space-y-4">
@@ -442,7 +442,7 @@ export default function App() {
             <PanelLeftOpen size={20} />
           </button>
           <span className="text-sm font-semibold text-claude-orange">
-            10Turtle AI
+
           </span>
         </div>
 
@@ -555,111 +555,111 @@ export default function App() {
           )}
         </div>
 
-        {/* Input Area — sticky bottom */}
-        <div className="sticky bottom-0 bg-claude-bg-dark/90 backdrop-blur-md p-8 pt-4 max-w-4xl mx-auto w-full">
-          <div className="relative bg-claude-card-dark border border-white/20 rounded-2xl p-3 shadow-2xl focus-within:border-claude-orange transition-all">
-            <textarea
-              placeholder="Send a message to 10Turtle AI..."
-              className="w-full bg-transparent border-none outline-none resize-none min-h-[40px] text-gray-200 placeholder:text-gray-600 disabled:opacity-50"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              disabled={loading}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendChat();
-                }
-              }}
-            />
-
-            {/* File Previews */}
-            {files.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2 px-1">
-                {files.map((file, i) => {
-                  const isImage = file.type.startsWith("image/");
-                  return (
-                    <div
-                      key={i}
-                      className="relative group/file flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-300"
-                    >
-                      {isImage ? (
-                        <img
-                          src={URL.createObjectURL(file)}
-                          alt={file.name}
-                          className="w-8 h-8 rounded object-cover"
-                        />
-                      ) : (
-                        <FileText
-                          size={16}
-                          className="text-claude-orange shrink-0"
-                        />
-                      )}
-                      <span className="max-w-[100px] truncate">
-                        {file.name}
-                      </span>
-                      <button
-                        onClick={() => removeFile(i)}
-                        className="p-0.5 rounded-full hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between mt-2 border-t border-white/5 pt-2">
-              <div className="flex items-center gap-4">
-                <label
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer text-xs text-gray-400 hover:text-white transition-all",
-                    loading &&
-                      "opacity-20 cursor-not-allowed pointer-events-none",
-                  )}
-                >
-                  <Paperclip size={14} />
-                  <span>
-                    {files.length > 0
-                      ? `${files.length} file${files.length > 1 ? "s" : ""}`
-                      : "Attach"}
-                  </span>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={handleFileSelect}
+        {/* Input Area — Fully at the bottom and compact */}
+        <div className="sticky bottom-0 bg-claude-bg-dark/95 backdrop-blur-lg border-t border-white/5 w-full z-20">
+          <div className="max-w-3xl mx-auto px-2 pt-2 pb-0 sm:px-4 sm:pt-4">
+            <div className="relative bg-claude-card-dark border border-white/20 rounded-xl shadow-2xl focus-within:border-claude-orange transition-all overflow-hidden">
+              <div className="flex items-end p-2 gap-2">
+                <div className="flex-1 min-w-0">
+                  <textarea
+                    placeholder="Message 10Turtle AI..."
+                    className="w-full bg-transparent border-none outline-none resize-none min-h-[44px] max-h-40 py-2 px-1 text-sm text-gray-200 placeholder:text-gray-600 disabled:opacity-50"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
                     disabled={loading}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendChat();
+                      }
+                    }}
                   />
-                </label>
+                </div>
+
+                <div className="flex flex-col gap-1.5 shrink-0">
+                  {/* Attach Button (Above Send) */}
+                  <label
+                    className={cn(
+                      "flex items-center justify-center w-9 h-9 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer text-gray-400 hover:text-white transition-all",
+                      loading && "opacity-20 cursor-not-allowed pointer-events-none",
+                    )}
+                    title="Attach files"
+                  >
+                    <Paperclip size={18} />
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileSelect}
+                      disabled={loading}
+                    />
+                  </label>
+
+                  {/* Send Button */}
+                  <button
+                    onClick={handleSendChat}
+                    disabled={loading || !prompt}
+                    className="flex items-center justify-center w-9 h-9 bg-claude-orange hover:bg-claude-orange-hover text-white rounded-lg transition-all disabled:opacity-20 shadow-lg shadow-claude-orange/20"
+                  >
+                    {loading ? (
+                      <Loader2 className="animate-spin" size={18} />
+                    ) : (
+                      <Send size={18} />
+                    )}
+                  </button>
+                </div>
               </div>
 
-              <button
-                onClick={handleSendChat}
-                disabled={loading || !prompt}
-                className="bg-claude-orange hover:bg-claude-orange-hover text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 transition-all disabled:opacity-20"
-              >
-                {loading ? (
-                  <Loader2 className="animate-spin" size={18} />
-                ) : (
-                  <Send size={18} />
-                )}
-                <span>{loading ? "Processing..." : "Send"}</span>
-              </button>
+              {/* File Previews inside the box for compactness */}
+              {files.length > 0 && (
+                <div className="flex flex-wrap gap-2 p-2 border-t border-white/5 bg-black/20">
+                  {files.map((file, i) => {
+                    const isImage = file.type.startsWith("image/");
+                    return (
+                      <div
+                        key={i}
+                        className="relative group/file flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-gray-300"
+                      >
+                        {isImage ? (
+                          <img
+                            src={URL.createObjectURL(file)}
+                            alt={file.name}
+                            className="w-5 h-5 rounded object-cover"
+                          />
+                        ) : (
+                          <FileText
+                            size={12}
+                            className="text-claude-orange shrink-0"
+                          />
+                        )}
+                        <span className="max-w-[80px] truncate">
+                          {file.name}
+                        </span>
+                        <button
+                          onClick={() => removeFile(i)}
+                          className="p-0.5 rounded-full hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
+
+            {loading && (
+              <p className="text-xs text-center text-claude-orange mt-2 animate-pulse font-medium">
+                {queueStatus || "Processing..."} Please don't reload or close
+                the tab
+              </p>
+            )}
           </div>
-          {loading && (
-            <p className="text-lg text-center text-claude-orange mt-2 animate-pulse font-medium">
-              {queueStatus || "Processing..."}  Please don't reload or close 
-              the tab 
-            </p>
-          )}
-          <p className="text-[10px] text-center text-gray-600 mt-4 uppercase tracking-[0.2em]">
-            Automated Integration Engine
-          </p>
         </div>
+
       </main>
     </div>
+
   );
 }
