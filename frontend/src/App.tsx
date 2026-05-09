@@ -49,7 +49,10 @@ export default function App() {
   const [prompt, setPrompt] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [copied, setCopied] = useState(false);
+  const [queueStatus, setQueueStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const responseRef = useRef<HTMLDivElement>(null);
 
   // Form states
   const [email, setEmail] = useState("");
@@ -93,25 +96,71 @@ export default function App() {
   const handleSendChat = async () => {
     if (!prompt) return;
     setLoading(true);
+    setQueueStatus("Submitting to queue...");
     const formData = new FormData();
     formData.append("prompt", prompt);
     files.forEach((file) => formData.append("attachments", file));
 
     try {
       const res = await api.post("/chat/new", formData);
-      setActiveChat(res.data);
+      const jobId = res.data.jobId;
       setPrompt("");
       setFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      fetchHistory();
+
+      setQueueStatus("Queued — waiting for processing...");
+
+      // Start polling for job completion
+      pollingRef.current = setInterval(async () => {
+        try {
+          const statusRes = await api.get(`/chat/status/${jobId}`);
+          const { state, result, error, queuePosition, partialText } = statusRes.data;
+
+          if (state === "waiting") {
+            setQueueStatus(`Queued — position #${queuePosition || "?"} in line`);
+          } else if (state === "active") {
+            setQueueStatus("Generating response...");
+            // Show partial text as it streams in
+            if (partialText) {
+              setActiveChat({
+                projectName: "Generating...",
+                response: partialText,
+                prompt: formData.get("prompt") as string,
+                _isStreaming: true,
+              });
+            }
+          } else if (state === "completed" && result) {
+            // Done! Show the final result
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            setActiveChat(result);
+            setQueueStatus(null);
+            setLoading(false);
+            fetchHistory();
+          } else if (state === "failed") {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            setQueueStatus(null);
+            setLoading(false);
+            alert("Automation failed: " + (error || "Unknown error"));
+          }
+        } catch (pollErr) {
+          console.error("Polling error:", pollErr);
+        }
+      }, 3000);
     } catch (err: any) {
-      alert(
-        "Automation failed: " + (err.response?.data?.message || err.message),
-      );
-    } finally {
+      setQueueStatus(null);
       setLoading(false);
+      alert(
+        "Failed to queue: " + (err.response?.data?.message || err.message),
+      );
     }
   };
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -143,11 +192,41 @@ export default function App() {
   };
 
   const handleCopy = () => {
-    if (activeChat?.response) {
-      navigator.clipboard.writeText(activeChat.response);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    if (!activeChat?.response) return;
+
+    // Strip ALL markdown to pure plain text
+    const plain = activeChat.response
+      .replace(/```[\s\S]*?```/g, (m: string) => m.replace(/```\w*\n?/g, "").trim())  // code fences → just code
+      .replace(/\*\*\*(.*?)\*\*\*/g, "$1")     // ***bold italic***
+      .replace(/\*\*(.*?)\*\*/g, "$1")          // **bold**
+      .replace(/\*(.*?)\*/g, "$1")              // *italic*
+      .replace(/__(.*?)__/g, "$1")              // __bold__
+      .replace(/_(.*?)_/g, "$1")                // _italic_
+      .replace(/~~(.*?)~~/g, "$1")              // ~~strike~~
+      .replace(/`([^`]+)`/g, "$1")              // `inline code`
+      .replace(/^#{1,6}\s+/gm, "")             // # headings → text
+      .replace(/^[\s]*[-*+]\s+/gm, "")         // - bullets → remove
+      .replace(/^\s*\d+\.\s+/gm, "")           // 1. numbered → remove
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")  // [link](url) → link
+      .replace(/!\[([^\]]*)\]\([^)]+\)/g, "")   // images → remove
+      .replace(/^>\s?/gm, "")                  // > blockquote → remove
+      .replace(/---+/g, "")                     // horizontal rules → remove
+      .replace(/\|[^\n]+\|/g, "")              // tables → remove
+      .replace(/\n{3,}/g, "\n\n")              // collapse blank lines
+      .trim();
+
+    // Use fallback copy method (works on HTTP too)
+    const textarea = document.createElement("textarea");
+    textarea.value = plain;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const formatProjectName = (name?: string) => {
@@ -385,23 +464,70 @@ export default function App() {
                       {formatProjectName(activeChat.projectName)}
                     </h2>
                     <p className="text-xs text-gray-500 mt-1">
-                      Automation Response
+                      {activeChat._isStreaming ? (
+                        <span className="text-claude-orange animate-pulse">● Generating live...</span>
+                      ) : (
+                        "Automation Response"
+                      )}
                     </p>
                   </div>
-                  <button
-                    onClick={handleCopy}
-                    className="flex items-center gap-2 text-xs text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-2 rounded-lg transition-all"
-                  >
-                    {copied ? (
-                      <Check size={14} className="text-green-500" />
-                    ) : (
-                      <Copy size={14} />
-                    )}
-                    {copied ? "Copied!" : "Copy"}
-                  </button>
+                  {!activeChat._isStreaming && (
+                    <button
+                      onClick={handleCopy}
+                      className="flex items-center gap-2 text-xs text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-2 rounded-lg transition-all"
+                    >
+                      {copied ? (
+                        <Check size={14} className="text-green-500" />
+                      ) : (
+                        <Copy size={14} />
+                      )}
+                      {copied ? "Copied!" : "Copy"}
+                    </button>
+                  )}
                 </div>
-                <div className="prose prose-invert max-w-none text-gray-200 leading-loose">
+                <div ref={responseRef} className="prose prose-invert max-w-none text-gray-200 leading-loose">
                   <ReactMarkdown>{activeChat.response}</ReactMarkdown>
+                  {activeChat._isStreaming && (
+                    <span className="inline-block w-2 h-5 bg-claude-orange ml-1 animate-pulse rounded-sm" />
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : loading ? (
+            /* ── Skeleton Shimmer while waiting for queue ── */
+            <div className="space-y-8 animate-in fade-in duration-300">
+              {/* Prompt echo skeleton */}
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+                <div className="shimmer-line h-3 w-24 rounded mb-4" />
+                <div className="space-y-2">
+                  <div className="shimmer-line h-4 w-full rounded" />
+                  <div className="shimmer-line h-4 w-3/4 rounded" />
+                </div>
+              </div>
+
+              {/* Response card skeleton */}
+              <div className="bg-claude-card-dark border border-white/10 rounded-2xl p-8 shadow-xl">
+                <div className="flex items-start justify-between mb-6">
+                  <div className="space-y-2">
+                    <div className="shimmer-line h-6 w-48 rounded" />
+                    <div className="shimmer-line h-3 w-32 rounded" />
+                  </div>
+                  <div className="shimmer-line h-8 w-16 rounded-lg" />
+                </div>
+                <div className="space-y-3">
+                  <div className="shimmer-line h-4 w-full rounded" />
+                  <div className="shimmer-line h-4 w-full rounded" />
+                  <div className="shimmer-line h-4 w-5/6 rounded" />
+                  <div className="shimmer-line h-4 w-full rounded" />
+                  <div className="shimmer-line h-4 w-4/6 rounded" />
+                  <div className="shimmer-line h-4 w-full rounded" />
+                  <div className="shimmer-line h-4 w-3/4 rounded" />
+                </div>
+                <div className="mt-6 flex items-center gap-2 text-claude-orange">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span className="text-xs font-medium animate-pulse">
+                    {queueStatus || "Waiting..."}
+                  </span>
                 </div>
               </div>
             </div>
@@ -514,7 +640,7 @@ export default function App() {
           </div>
           {loading && (
             <p className="text-xs text-center text-claude-orange mt-2 animate-pulse font-medium">
-              Processing please dont reload or close the tab
+              {queueStatus || "Processing..."} — please don't reload or close the tab
             </p>
           )}
           <p className="text-[10px] text-center text-gray-600 mt-4 uppercase tracking-[0.2em]">

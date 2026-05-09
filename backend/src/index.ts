@@ -6,6 +6,7 @@ import mongoose from 'mongoose';
 import healthRoutes from './routes/health.route.js';
 import chatRoutes from './routes/chat.route.js';
 import authRoutes from './routes/auth.js';
+import './services/queue/queue.service.js'; // Starts the BullMQ worker on boot
 
 const app = express();
 

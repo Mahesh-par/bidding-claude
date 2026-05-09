@@ -14,5 +14,7 @@ export const config = {
   SESSION_DIR: path.join(__dirname, '../../claude-session'),
   CLAUDE_URL: 'https://claude.ai',
   MONGODB_URI: process.env.MONGODB_URI || 'mongodb://localhost:27017/apna-claude',
-  JWT_SECRET: process.env.JWT_SECRET || 'your_super_secret_key_123'
+  JWT_SECRET: process.env.JWT_SECRET || 'your_super_secret_key_123',
+  REDIS_HOST: process.env.REDIS_HOST || 'localhost',
+  REDIS_PORT: parseInt(process.env.REDIS_PORT || '2021'),
 };

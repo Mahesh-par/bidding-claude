@@ -1,9 +1,14 @@
 import { Request, Response } from 'express';
-import { chatService } from '../services/chat/chat.service.js';
 import { logger } from '../utils/logger.js';
 import { ChatHistory } from '../models/ChatHistory.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
+import chatQueue, { getJobStatus } from '../services/queue/queue.service.js';
 
+/**
+ * POST /chat/new
+ * Adds a job to the BullMQ queue instead of processing directly.
+ * Returns a jobId for the frontend to poll.
+ */
 export const createNewChat = async (req: Request, res: Response) => {
   try {
     const { prompt } = req.body;
@@ -16,43 +21,67 @@ export const createNewChat = async (req: Request, res: Response) => {
       });
     }
 
-    logger.info(`Received new chat request. Prompt length: ${prompt.length}, Files: ${attachments?.length || 0}`);
+    const userId = (req as AuthRequest).user._id.toString();
 
-    if (attachments && attachments.length > 0) {
-      attachments.forEach((file, index) => {
-        logger.info(`File ${index + 1}: ${file.originalname} (${file.size} bytes)`);
-      });
-    }
+    logger.info(`[Controller] Queuing chat job. Prompt length: ${prompt.length}, Files: ${attachments?.length || 0}`);
 
-    const result = await chatService.sendNewChat(prompt, attachments || []);
+    // Serialize attachment info (paths on disk) so the worker can use them
+    const attachmentPaths = (attachments || []).map(f => ({
+      originalname: f.originalname,
+      path: f.path,
+      size: f.size,
+    }));
 
-    // Save to history
-    try {
-      await ChatHistory.create({
-        user: (req as AuthRequest).user._id,
-        prompt,
-        response: result.response,
-        projectName: result.projectName,
-        chatUrl: result.chatUrl,
-        attachments: attachments?.map(f => ({
-          filename: f.originalname,
-          path: f.path,
-          size: f.size
-        }))
-      });
-      logger.info('Chat saved to history');
-    } catch (dbError) {
-      logger.error('Failed to save chat to history', dbError);
-    }
+    // Add job to the queue
+    const job = await chatQueue.add('claude-chat', {
+      prompt,
+      attachmentPaths,
+      userId,
+    });
 
-    res.status(200).json(result);
+    logger.info(`[Controller] Job queued with ID: ${job.id}`);
+
+    res.status(202).json({
+      success: true,
+      message: 'Job queued successfully',
+      jobId: job.id,
+    });
 
   } catch (error: any) {
     logger.error('Controller error in createNewChat', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to process chat',
+      message: 'Failed to queue chat',
       error: error.message
+    });
+  }
+};
+
+/**
+ * GET /chat/status/:jobId
+ * Frontend polls this to check if a queued job is done.
+ */
+export const getJobStatusController = async (req: Request, res: Response) => {
+  try {
+    const jobId = req.params.jobId as string;
+    const status = await getJobStatus(jobId);
+
+    if (!status) {
+      return res.status(404).json({
+        success: false,
+        message: 'Job not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      ...status,
+    });
+  } catch (error: any) {
+    logger.error('Error in getJobStatus', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get job status'
     });
   }
 };
@@ -62,10 +91,9 @@ export const getChatHistory = async (req: Request, res: Response) => {
     const userId = (req as AuthRequest).user._id;
     
     const history = await ChatHistory.find({ user: userId })
-      .sort({ createdAt: -1 }) // Newest first
+      .sort({ createdAt: -1 })
       .select('prompt response projectName chatUrl createdAt');
 
-    // Format the response with India time
     const formattedHistory = history.map(item => ({
       id: item._id,
       projectName: item.projectName,

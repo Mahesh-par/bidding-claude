@@ -11,6 +11,7 @@ export class ChatService {
   public async sendNewChat(
     prompt: string,
     attachments: Express.Multer.File[] = [],
+    onProgress?: (partialText: string) => void,
   ) {
     const browser = await browserService.launch(false);
 
@@ -49,8 +50,8 @@ export class ChatService {
       logger.info("Clicking send...");
       await this.clickSendWithRetry(page);
 
-      // Wait for response to finish
-      await this.waitForResponse(page);
+      // Wait for response to finish (with live progress reporting)
+      await this.waitForResponse(page, onProgress);
 
       // Extract Project Name / Chat Title and Current URL
       logger.info("Extracting project name and URL...");
@@ -112,7 +113,7 @@ export class ChatService {
     }
   }
 
-  private async waitForResponse(page: Page): Promise<string> {
+  private async waitForResponse(page: Page, onProgress?: (partialText: string) => void): Promise<string> {
     logger.info("Monitoring response state...");
 
     let stopButtonExisted = false;
@@ -163,6 +164,11 @@ export class ChatService {
         stableTime = 0;
       }
       lastText = currentText;
+
+      // Report partial text to the queue for live streaming
+      if (currentText && onProgress) {
+        onProgress(currentText);
+      }
 
       // Completion Logic
       if (stopButtonExisted && !isGenerating) {

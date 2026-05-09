@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { createNewChat, getChatHistory, deleteChatHistory } from '../controllers/chat.controller.js';
+import { createNewChat, getChatHistory, deleteChatHistory, getJobStatusController } from '../controllers/chat.controller.js';
 import { authentication } from '../middleware/auth.middleware.js';
 
 const router = Router();
@@ -22,6 +22,7 @@ const upload = multer({ storage });
  * payload: { prompt: string, attachments: File[] }
  */
 router.post('/new', authentication, upload.array('attachments'), createNewChat);
+router.get('/status/:jobId', authentication, getJobStatusController);
 router.get('/history', authentication, getChatHistory);
 router.delete('/history/:id', authentication, deleteChatHistory);
 
