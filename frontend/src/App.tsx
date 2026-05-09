@@ -14,6 +14,8 @@ import {
   FileText,
   PanelLeftOpen,
   PanelLeftClose,
+  Copy,
+  Check,
 } from "lucide-react";
 import api from "./api";
 import ReactMarkdown from "react-markdown";
@@ -46,6 +48,7 @@ export default function App() {
   const [activeChat, setActiveChat] = useState<any>(null);
   const [prompt, setPrompt] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form states
@@ -137,6 +140,22 @@ export default function App() {
     } catch (err) {
       alert("Failed to delete chat");
     }
+  };
+
+  const handleCopy = () => {
+    if (activeChat?.response) {
+      navigator.clipboard.writeText(activeChat.response);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const formatProjectName = (name?: string) => {
+    if (!name) return "Unnamed Project";
+    if (name.includes("/")) {
+      return name.split("/").pop()?.trim() || name;
+    }
+    return name;
   };
 
   if (view === "auth") {
@@ -290,7 +309,7 @@ export default function App() {
                 <div className="flex justify-between items-start">
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm truncate pr-2 group-hover:text-claude-orange">
-                      {item.projectName || "Unnamed Project"}
+                      {formatProjectName(item.projectName)}
                     </div>
                     <div className="text-[10px] text-gray-500 mt-1">
                       {item.inputTime}
@@ -363,23 +382,23 @@ export default function App() {
                 <div className="flex items-start justify-between mb-6">
                   <div>
                     <h2 className="text-xl font-bold text-claude-orange">
-                      {activeChat.projectName}
+                      {formatProjectName(activeChat.projectName)}
                     </h2>
                     <p className="text-xs text-gray-500 mt-1">
                       Automation Response
                     </p>
                   </div>
-                  {activeChat.chatUrl && (
-                    <a
-                      href={activeChat.chatUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-2 text-xs text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-2 rounded-lg transition-all"
-                    >
-                      <ExternalLink size={14} />
-                      View Original
-                    </a>
-                  )}
+                  <button
+                    onClick={handleCopy}
+                    className="flex items-center gap-2 text-xs text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-2 rounded-lg transition-all"
+                  >
+                    {copied ? (
+                      <Check size={14} className="text-green-500" />
+                    ) : (
+                      <Copy size={14} />
+                    )}
+                    {copied ? "Copied!" : "Copy"}
+                  </button>
                 </div>
                 <div className="prose prose-invert max-w-none text-gray-200 leading-loose">
                   <ReactMarkdown>{activeChat.response}</ReactMarkdown>
@@ -407,9 +426,10 @@ export default function App() {
           <div className="relative bg-claude-card-dark border border-white/20 rounded-2xl p-3 shadow-2xl focus-within:border-claude-orange transition-all">
             <textarea
               placeholder="Send a message to Claude..."
-              className="w-full bg-transparent border-none outline-none resize-none min-h-[40px] text-gray-200 placeholder:text-gray-600"
+              className="w-full bg-transparent border-none outline-none resize-none min-h-[40px] text-gray-200 placeholder:text-gray-600 disabled:opacity-50"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              disabled={loading}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -457,7 +477,10 @@ export default function App() {
 
             <div className="flex items-center justify-between mt-2 border-t border-white/5 pt-2">
               <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer text-xs text-gray-400 hover:text-white transition-all">
+                <label className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer text-xs text-gray-400 hover:text-white transition-all",
+                  loading && "opacity-20 cursor-not-allowed pointer-events-none"
+                )}>
                   <Paperclip size={14} />
                   <span>
                     {files.length > 0
@@ -470,6 +493,7 @@ export default function App() {
                     multiple
                     className="hidden"
                     onChange={handleFileSelect}
+                    disabled={loading}
                   />
                 </label>
               </div>
@@ -488,6 +512,11 @@ export default function App() {
               </button>
             </div>
           </div>
+          {loading && (
+            <p className="text-xs text-center text-claude-orange mt-2 animate-pulse font-medium">
+              Processing please dont reload or close the tab
+            </p>
+          )}
           <p className="text-[10px] text-center text-gray-600 mt-4 uppercase tracking-[0.2em]">
             Automated Claude Integration Engine
           </p>

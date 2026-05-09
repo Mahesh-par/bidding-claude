@@ -20,7 +20,7 @@ export class ChatService {
 
     try {
       const url =
-        "https://claude.ai/project/019d9a63-6f4d-73e0-941a-fc089d82df5c";
+        "https://claude.ai/project/019df89e-e7c9-75f8-8ec9-d288f0f3396f";
       logger.info(`Navigating to Claude Chat: ${url}`);
       await page.goto(url, { waitUntil: "networkidle2" });
 
