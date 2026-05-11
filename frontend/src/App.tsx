@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import api from "./api";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -42,9 +43,17 @@ export default function App() {
   const [view, setView] = useState<"auth" | "main">(user ? "main" : "auth");
   const [isSignup, setIsSignup] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [history, setHistory] = useState<ChatItem[]>([]);
-  const [activeChat, setActiveChat] = useState<any>(null);
+  const [activeChat, setActiveChat] = useState<any>(() => {
+    const saved = localStorage.getItem("activeChat");
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem("sidebarWidth");
+    return saved ? parseInt(saved) : 260;
+  });
+  const [isResizing, setIsResizing] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [copied, setCopied] = useState(false);
@@ -54,9 +63,18 @@ export default function App() {
   const responseRef = useRef<HTMLDivElement>(null);
 
   // Form states
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
+
+  // Persist active chat
+  useEffect(() => {
+    if (activeChat) {
+      localStorage.setItem("activeChat", JSON.stringify(activeChat));
+    } else {
+      localStorage.removeItem("activeChat");
+    }
+  }, [activeChat]);
 
   useEffect(() => {
     if (user) {
@@ -96,6 +114,7 @@ export default function App() {
     if (!prompt) return;
     setLoading(true);
     setQueueStatus("Submitting to queue...");
+    setPendingPrompt(prompt);
     const formData = new FormData();
     formData.append("prompt", prompt);
     files.forEach((file) => formData.append("attachments", file));
@@ -137,11 +156,13 @@ export default function App() {
             setActiveChat(result);
             setQueueStatus(null);
             setLoading(false);
+            setPendingPrompt(null);
             fetchHistory();
           } else if (state === "failed") {
             if (pollingRef.current) clearInterval(pollingRef.current);
             setQueueStatus(null);
             setLoading(false);
+            setPendingPrompt(null);
             alert("Automation failed: " + (error || "Unknown error"));
           }
         } catch (pollErr) {
@@ -161,6 +182,38 @@ export default function App() {
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
   }, []);
+
+  // Resizing logic
+  const startResizing = React.useCallback((e: React.MouseEvent) => {
+    setIsResizing(true);
+    e.preventDefault();
+  }, []);
+
+  const stopResizing = React.useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  const resize = React.useCallback(
+    (e: MouseEvent) => {
+      if (isResizing) {
+        const newWidth = e.clientX;
+        if (newWidth > 200 && newWidth < 600) {
+          setSidebarWidth(newWidth);
+          localStorage.setItem("sidebarWidth", newWidth.toString());
+        }
+      }
+    },
+    [isResizing],
+  );
+
+  useEffect(() => {
+    window.addEventListener("mousemove", resize);
+    window.addEventListener("mouseup", stopResizing);
+    return () => {
+      window.removeEventListener("mousemove", resize);
+      window.removeEventListener("mouseup", stopResizing);
+    };
+  }, [resize, stopResizing]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -321,21 +374,21 @@ export default function App() {
 
   return (
     <div className="h-screen flex bg-claude-bg-dark text-white relative">
-      {/* Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Toggle Sidebar */}
+      {/* Static Sidebar */}
       <aside
-        className={cn(
-          "fixed top-0 left-0 h-full w-80 border-r border-white/10 flex flex-col bg-claude-bg-dark z-40 transition-transform duration-300",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full",
-        )}
+        style={{ width: sidebarWidth }}
+        className="h-full border-r border-white/10 flex flex-col bg-claude-bg-dark shrink-0 relative group"
       >
+        {/* Resizer bar */}
+        <div
+          onMouseDown={startResizing}
+          className={cn(
+            "absolute -right-0.5 top-0 w-1.5 h-full cursor-col-resize z-50 transition-colors",
+            isResizing
+              ? "bg-claude-orange"
+              : "hover:bg-claude-orange/30 group-hover:bg-white/5",
+          )}
+        />
         <div className="p-6 flex items-center justify-between border-b border-white/10">
           <div className="flex items-center gap-2 font-bold text-claude-orange">
             <Zap size={20} fill="currentColor" />
@@ -351,13 +404,6 @@ export default function App() {
               title="New Chat"
             >
               <Plus size={20} />
-            </button>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white transition-colors"
-              title="Close sidebar"
-            >
-              <PanelLeftClose size={20} />
             </button>
           </div>
         </div>
@@ -384,12 +430,15 @@ export default function App() {
                   "w-full text-left p-3 rounded-xl border transition-all group relative",
                   activeChat?.id === item.id
                     ? "bg-claude-orange/10 border-claude-orange/30"
-                    : "bg-white/5 border-transparent hover:bg-white/10",
+                    : "bg-white/5 border-transparent",
                 )}
               >
                 <div className="flex justify-between items-start">
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate pr-2 group-hover:text-claude-orange">
+                    <div className={cn(
+                      "font-medium text-sm truncate pr-2 transition-colors",
+                      activeChat?.id === item.id ? "text-claude-orange" : "text-white"
+                    )}>
                       {formatProjectName(item.projectName)}
                     </div>
                     <div className="text-[10px] text-gray-500 mt-1">
@@ -431,19 +480,7 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto relative w-full min-w-0">
-        {/* Top bar with toggle */}
-        <div className="sticky top-0 z-10 bg-claude-bg-dark/80 backdrop-blur-md flex items-center gap-3 p-4 border-b border-white/5">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white transition-colors"
-            title="Open history"
-          >
-            <PanelLeftOpen size={20} />
-          </button>
-          <span className="text-sm font-semibold text-claude-orange"></span>
-        </div>
-
-        <div className="p-4 sm:p-8 max-w-4xl mx-auto w-full">
+        <div className="p-4 sm:p-10 max-w-6xl mx-auto w-full">
           {activeChat ? (
             <div className="space-y-8 animate-in fade-in duration-500">
               {activeChat.prompt && (
@@ -469,7 +506,7 @@ export default function App() {
                           ● Generating live...
                         </span>
                       ) : (
-                        "Automation Response"
+                        ""
                       )}
                     </p>
                   </div>
@@ -491,7 +528,24 @@ export default function App() {
                   ref={responseRef}
                   className="prose prose-invert max-w-none text-gray-200 leading-loose break-words overflow-x-auto"
                 >
-                  <ReactMarkdown>{activeChat.response}</ReactMarkdown>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      a: ({ node, ...props }) => (
+                        <a
+                          {...props}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-claude-orange hover:underline"
+                        />
+                      ),
+                    }}
+                  >
+                    {(activeChat.response || "").replace(
+                      /(?<!\[)(?<!http:\/\/)(?<!https:\/\/)(?<!www\.)(\b[a-zA-Z0-9-]+\.(?:[a-zA-Z0-9-]+\.)*[a-z]{2,}\b)(?!\))/g,
+                      "[$1](http://$1)",
+                    )}
+                  </ReactMarkdown>
                   {activeChat._isStreaming && (
                     <span className="inline-block w-2 h-5 bg-claude-orange ml-1 animate-pulse rounded-sm" />
                   )}
@@ -503,10 +557,16 @@ export default function App() {
             <div className="space-y-8 animate-in fade-in duration-300">
               {/* Prompt echo skeleton */}
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-                <div className="shimmer-line h-3 w-24 rounded mb-4" />
-                <div className="space-y-2">
-                  <div className="shimmer-line h-4 w-full rounded" />
-                  <div className="shimmer-line h-4 w-3/4 rounded" />
+                <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
+                  Your Request
+                </div>
+                <div className="text-gray-300 leading-relaxed">
+                  {pendingPrompt || (
+                    <div className="space-y-2">
+                      <div className="shimmer-line h-4 w-full rounded" />
+                      <div className="shimmer-line h-4 w-3/4 rounded" />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -537,121 +597,111 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div className="h-[60vh] flex flex-col items-center justify-center text-center opacity-40">
+            <div className="h-[60vh] flex flex-col items-center justify-center text-center opacity-80">
               <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6">
-                <MessageSquare size={32} />
+                <MessageSquare size={32} className="text-claude-orange" />
               </div>
-              <h2 className="text-xl font-medium">
+              <h2 className="text-2xl font-bold">
                 Ready for a new automation?
               </h2>
-              <p className="text-sm text-gray-500 mt-2 max-w-xs">
-                Enter your prompt below to start a new automated session with
-                Claude.
+              <p className="text-base text-gray-300 font-medium mt-3 max-w-sm">
+                Enter your prompt below to start
               </p>
             </div>
           )}
         </div>
 
-        {/* Input Area — Fully at the bottom and compact */}
         <div className="sticky bottom-0 bg-claude-bg-dark/95 backdrop-blur-lg border-t border-white/5 w-full z-20">
-          <div className="max-w-3xl mx-auto px-2 pt-2 pb-0 sm:px-4 sm:pt-4">
-            <div className="relative bg-claude-card-dark border border-white/20 rounded-xl shadow-2xl focus-within:border-claude-orange transition-all overflow-hidden">
-              <div className="flex items-end p-2 gap-2">
-                <div className="flex-1 min-w-0">
-                  <textarea
-                    placeholder="Message 10Turtle AI..."
-                    className="w-full bg-transparent border-none outline-none resize-none min-h-[44px] max-h-40 py-2 px-1 text-sm text-gray-200 placeholder:text-gray-600 disabled:opacity-50"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    disabled={loading}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendChat();
-                      }
-                    }}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5 shrink-0">
-                  {/* Attach Button (Above Send) */}
-                  <label
-                    className={cn(
-                      "flex items-center justify-center w-9 h-9 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer text-gray-400 hover:text-white transition-all",
-                      loading &&
-                        "opacity-20 cursor-not-allowed pointer-events-none",
-                    )}
-                    title="Attach files"
-                  >
-                    <Paperclip size={18} />
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={handleFileSelect}
-                      disabled={loading}
-                    />
-                  </label>
-
-                  {/* Send Button */}
-                  <button
-                    onClick={handleSendChat}
-                    disabled={loading || !prompt}
-                    className="flex items-center justify-center w-9 h-9 bg-claude-orange hover:bg-claude-orange-hover text-white rounded-lg transition-all disabled:opacity-20 shadow-lg shadow-claude-orange/20"
-                  >
-                    {loading ? (
-                      <Loader2 className="animate-spin" size={18} />
-                    ) : (
-                      <Send size={18} />
-                    )}
-                  </button>
-                </div>
+          <div className="max-w-4xl mx-auto px-2 pt-4 pb-4 sm:px-4">
+            {loading ? (
+              <div className="bg-claude-card-dark border border-claude-orange/30 rounded-xl p-4 flex items-center justify-center gap-3 animate-pulse shadow-lg shadow-claude-orange/10">
+                <Loader2 className="animate-spin text-claude-orange" size={20} />
+                <span className="text-sm font-medium text-claude-orange uppercase tracking-widest">
+                  {queueStatus || "Processing Request..."}
+                </span>
               </div>
+            ) : (
+              <div className="relative bg-claude-card-dark border border-white/20 rounded-xl shadow-2xl focus-within:border-claude-orange transition-all overflow-hidden">
+                <div className="flex items-end p-2 gap-2">
+                  <div className="flex-1 min-w-0">
+                    <textarea
+                      placeholder="Message 10Turtle AI..."
+                      className="w-full bg-transparent border-none outline-none resize-none min-h-[44px] max-h-40 py-2 px-1 text-sm text-gray-200 placeholder:text-gray-600 disabled:opacity-50"
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendChat();
+                        }
+                      }}
+                    />
+                  </div>
 
-              {/* File Previews inside the box for compactness */}
-              {files.length > 0 && (
-                <div className="flex flex-wrap gap-2 p-2 border-t border-white/5 bg-black/20">
-                  {files.map((file, i) => {
-                    const isImage = file.type.startsWith("image/");
-                    return (
-                      <div
-                        key={i}
-                        className="relative group/file flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-gray-300"
-                      >
-                        {isImage ? (
-                          <img
-                            src={URL.createObjectURL(file)}
-                            alt={file.name}
-                            className="w-5 h-5 rounded object-cover"
-                          />
-                        ) : (
-                          <FileText
-                            size={12}
-                            className="text-claude-orange shrink-0"
-                          />
-                        )}
-                        <span className="max-w-[80px] truncate">
-                          {file.name}
-                        </span>
-                        <button
-                          onClick={() => removeFile(i)}
-                          className="p-0.5 rounded-full hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors"
-                        >
-                          <X size={10} />
-                        </button>
-                      </div>
-                    );
-                  })}
+                  <div className="flex flex-col gap-1.5 shrink-0">
+                    {/* Attach Button (Above Send) */}
+                    <label
+                      className="flex items-center justify-center w-9 h-9 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer text-gray-400 hover:text-white transition-all"
+                      title="Attach files"
+                    >
+                      <Paperclip size={18} />
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={handleFileSelect}
+                      />
+                    </label>
+
+                    {/* Send Button */}
+                    <button
+                      onClick={handleSendChat}
+                      disabled={!prompt}
+                      className="flex items-center justify-center w-9 h-9 bg-claude-orange hover:bg-claude-orange-hover text-white rounded-lg transition-all disabled:opacity-20 shadow-lg shadow-claude-orange/20"
+                    >
+                      <Send size={18} />
+                    </button>
+                  </div>
                 </div>
-              )}
-            </div>
 
-            {loading && (
-              <p className="text-xs text-center text-claude-orange mt-2 animate-pulse font-medium">
-                {queueStatus || "Processing..."} Please don't reload or close
-                the tab
-              </p>
+                {/* File Previews inside the box for compactness */}
+                {files.length > 0 && (
+                  <div className="flex flex-wrap gap-2 p-2 border-t border-white/5 bg-black/20">
+                    {files.map((file, i) => {
+                      const isImage = file.type.startsWith("image/");
+                      return (
+                        <div
+                          key={i}
+                          className="relative group/file flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-gray-300"
+                        >
+                          {isImage ? (
+                            <img
+                              src={URL.createObjectURL(file)}
+                              alt={file.name}
+                              className="w-5 h-5 rounded object-cover"
+                            />
+                          ) : (
+                            <FileText
+                              size={12}
+                              className="text-claude-orange shrink-0"
+                            />
+                          )}
+                          <span className="max-w-[80px] truncate">
+                            {file.name}
+                          </span>
+                          <button
+                            onClick={() => removeFile(i)}
+                            className="p-0.5 rounded-full hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors"
+                          >
+                            <X size={10} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

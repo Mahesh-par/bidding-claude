@@ -193,91 +193,57 @@ export class ChatService {
   }
 
   /**
-   * Clicks the copy button of the last message and returns clipboard content
+   * Strictly extracts the content of the last code block in the last message.
+   * If no code block is found, returns 'MD_FILE NOT FOUND PLEASE TRY AGAIN'.
    */
   private async copyLastMessage(page: Page): Promise<string> {
     try {
-      // 1. Locate the messages with expanded selectors
-      const messageSelectors = [
-        '[data-testid="message-container"]',
-        ".font-claude-message",
-        'div[data-is-streaming="false"]',
-        "article",
-      ].join(", ");
+      logger.info("Extracting last code block...");
 
-      const messages = await page.$$(messageSelectors);
-      logger.info(`Found ${messages.length} message containers.`);
-
-      // 2. Strategy A: Find copy button within the last message
-      if (messages.length > 0) {
-        const lastMessage = messages[messages.length - 1];
-        const copyBtn = await lastMessage.$(
-          'button[data-testid="action-bar-copy"], button[aria-label="Copy"]',
-        );
-        if (copyBtn) {
-          logger.info("Found Copy button in last message container.");
-          await copyBtn.click();
-          const content = await this.readClipboard(page);
-          if (content) return content;
-        }
-      }
-
-      // 3. Strategy B: Global Fallback - Find the last Copy button on the page
-      logger.warn("Strategy A failed, trying Strategy B (Global fallback)...");
-      const globalCopyButtons = await page.$$(
-        'button[data-testid="action-bar-copy"], button[aria-label="Copy"]',
-      );
-      if (globalCopyButtons.length > 0) {
-        logger.info(
-          `Found ${globalCopyButtons.length} copy buttons globally. Clicking the last one.`,
-        );
-        const lastBtn = globalCopyButtons[globalCopyButtons.length - 1];
-        await lastBtn.click();
-        const content = await this.readClipboard(page);
-        if (content) return content;
-      }
-
-      // Strategy C: Scrape directly from DOM if clipboard fails
-      logger.warn(
-        "Clipboard strategy failed or blocked. Falling back to DOM scraping...",
-      );
-      return await page.evaluate(() => {
+      const codeBlockContent = await page.evaluate(() => {
+        // 1. Identify all message containers
         const messageSelectors = [
           '[data-testid="message-container"]',
           ".font-claude-message",
           'div[data-is-streaming="false"]',
           "article",
         ];
+        const containers = document.querySelectorAll(messageSelectors.join(", "));
 
-        const containers = document.querySelectorAll(
-          messageSelectors.join(", "),
-        );
-        if (containers.length > 0) {
-          const lastMsg = containers[containers.length - 1] as HTMLElement;
-          // Try to get text but exclude the action bar/buttons
-          const textEl = lastMsg.querySelector(".grid-cols-1") || lastMsg;
-          return (textEl as HTMLElement).innerText.trim();
+        if (containers.length === 0) return "MESSAGE_CONTAINER_NOT_FOUND";
+
+        // 2. Focus on the last message container
+        const lastMsg = containers[containers.length - 1] as HTMLElement;
+
+        // 3. Find all code blocks within the last message
+        // The user specifically pointed to 'pre.code-block__code'
+        const codeBlocks = lastMsg.querySelectorAll("pre.code-block__code");
+
+        if (codeBlocks.length > 0) {
+          // 4. Return the content of the last code block
+          const lastCodeBlock = codeBlocks[codeBlocks.length - 1] as HTMLElement;
+          return lastCodeBlock.innerText.trim();
         }
-        return "FAILED_TO_EXTRACT_CONTENT";
+
+        return "MD_FILE NOT FOUND PLEASE TRY AGAIN";
       });
+
+      if (
+        codeBlockContent === "MD_FILE NOT FOUND PLEASE TRY AGAIN" ||
+        codeBlockContent === "MESSAGE_CONTAINER_NOT_FOUND"
+      ) {
+        logger.warn(`Extraction result: ${codeBlockContent}`);
+      } else {
+        logger.info("Successfully extracted code block.");
+      }
+
+      return codeBlockContent;
     } catch (error) {
       logger.error("Error in copyLastMessage", error);
       return "ERROR_DURING_EXTRACTION";
     }
   }
 
-  private async readClipboard(page: Page): Promise<string | null> {
-    await new Promise((r) => setTimeout(r, 1000));
-    return await page.evaluate(async () => {
-      try {
-        // Must be focused to read clipboard
-        window.focus();
-        return await navigator.clipboard.readText();
-      } catch (err) {
-        return null;
-      }
-    });
-  }
 
   /**
    * Paste prompt with up to 3 retry attempts using different strategies
