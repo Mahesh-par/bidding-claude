@@ -6,7 +6,6 @@ import {
   LogOut,
   Zap,
   ChevronRight,
-  ExternalLink,
   Loader2,
   Plus,
   Trash2,
@@ -431,7 +430,7 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative w-full">
+      <main className="flex-1 overflow-y-auto relative w-full min-w-0">
         {/* Top bar with toggle */}
         <div className="sticky top-0 z-10 bg-claude-bg-dark/80 backdrop-blur-md flex items-center gap-3 p-4 border-b border-white/5">
           <button
@@ -441,12 +440,10 @@ export default function App() {
           >
             <PanelLeftOpen size={20} />
           </button>
-          <span className="text-sm font-semibold text-claude-orange">
-
-          </span>
+          <span className="text-sm font-semibold text-claude-orange"></span>
         </div>
 
-        <div className="p-8 max-w-4xl mx-auto w-full">
+        <div className="p-4 sm:p-8 max-w-4xl mx-auto w-full">
           {activeChat ? (
             <div className="space-y-8 animate-in fade-in duration-500">
               {activeChat.prompt && (
@@ -460,7 +457,7 @@ export default function App() {
                 </div>
               )}
 
-              <div className="bg-claude-card-dark border border-white/10 rounded-2xl p-8 shadow-xl">
+              <div className="bg-claude-card-dark border border-white/10 rounded-2xl p-4 sm:p-8 shadow-xl">
                 <div className="flex items-start justify-between mb-6">
                   <div>
                     <h2 className="text-xl font-bold text-claude-orange">
@@ -492,7 +489,7 @@ export default function App() {
                 </div>
                 <div
                   ref={responseRef}
-                  className="prose prose-invert max-w-none text-gray-200 leading-loose"
+                  className="prose prose-invert max-w-none text-gray-200 leading-loose break-words overflow-x-auto"
                 >
                   <ReactMarkdown>{activeChat.response}</ReactMarkdown>
                   {activeChat._isStreaming && (
@@ -581,7 +578,8 @@ export default function App() {
                   <label
                     className={cn(
                       "flex items-center justify-center w-9 h-9 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer text-gray-400 hover:text-white transition-all",
-                      loading && "opacity-20 cursor-not-allowed pointer-events-none",
+                      loading &&
+                        "opacity-20 cursor-not-allowed pointer-events-none",
                     )}
                     title="Attach files"
                   >
@@ -657,9 +655,7 @@ export default function App() {
             )}
           </div>
         </div>
-
       </main>
     </div>
-
   );
 }

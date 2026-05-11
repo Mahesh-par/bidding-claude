@@ -113,7 +113,10 @@ export class ChatService {
     }
   }
 
-  private async waitForResponse(page: Page, onProgress?: (partialText: string) => void): Promise<string> {
+  private async waitForResponse(
+    page: Page,
+    onProgress?: (partialText: string) => void,
+  ): Promise<string> {
     logger.info("Monitoring response state...");
 
     let stopButtonExisted = false;
@@ -235,20 +238,24 @@ export class ChatService {
       }
 
       // Strategy C: Scrape directly from DOM if clipboard fails
-      logger.warn("Clipboard strategy failed or blocked. Falling back to DOM scraping...");
+      logger.warn(
+        "Clipboard strategy failed or blocked. Falling back to DOM scraping...",
+      );
       return await page.evaluate(() => {
         const messageSelectors = [
           '[data-testid="message-container"]',
           ".font-claude-message",
           'div[data-is-streaming="false"]',
-          "article"
+          "article",
         ];
-        
-        const containers = document.querySelectorAll(messageSelectors.join(', '));
+
+        const containers = document.querySelectorAll(
+          messageSelectors.join(", "),
+        );
         if (containers.length > 0) {
           const lastMsg = containers[containers.length - 1] as HTMLElement;
           // Try to get text but exclude the action bar/buttons
-          const textEl = lastMsg.querySelector('.grid-cols-1') || lastMsg;
+          const textEl = lastMsg.querySelector(".grid-cols-1") || lastMsg;
           return (textEl as HTMLElement).innerText.trim();
         }
         return "FAILED_TO_EXTRACT_CONTENT";
@@ -275,8 +282,12 @@ export class ChatService {
   /**
    * Paste prompt with up to 3 retry attempts using different strategies
    */
-  private async pastePromptWithRetry(page: Page, prompt: string): Promise<void> {
-    const inputSelector = 'div[contenteditable="true"], textarea, [role="textbox"]';
+  private async pastePromptWithRetry(
+    page: Page,
+    prompt: string,
+  ): Promise<void> {
+    const inputSelector =
+      'div[contenteditable="true"], textarea, [role="textbox"]';
     const MAX_RETRIES = 3;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -325,14 +336,16 @@ export class ChatService {
         }
 
         // Strategy 2: Clipboard API paste
-        logger.warn(`Attempt ${attempt}: execCommand returned empty. Trying clipboard paste...`);
+        logger.warn(
+          `Attempt ${attempt}: execCommand returned empty. Trying clipboard paste...`,
+        );
         await page.evaluate(async (text) => {
           const input = document.querySelector(
             'div[contenteditable="true"], textarea, [role="textbox"]',
           ) as HTMLElement;
           if (!input) return;
           input.focus();
-          
+
           // Write to clipboard then paste
           await navigator.clipboard.writeText(text);
           document.execCommand("paste");
@@ -357,7 +370,9 @@ export class ChatService {
         }
 
         // Strategy 3: Direct keyboard typing (slowest but most reliable)
-        logger.warn(`Attempt ${attempt}: Clipboard paste failed. Typing directly...`);
+        logger.warn(
+          `Attempt ${attempt}: Clipboard paste failed. Typing directly...`,
+        );
         await page.click(inputSelector, { count: 3 }); // Triple-click to select all
         await page.keyboard.type(prompt, { delay: 5 });
 
@@ -385,7 +400,7 @@ export class ChatService {
     const sendSelectors = [
       'button[aria-label="Send Message"]',
       'button[aria-label*="Send"]',
-      'button.bg-accent',
+      "button.bg-accent",
       'button[data-testid="send-button"]',
     ];
     const MAX_RETRIES = 3;
@@ -410,7 +425,9 @@ export class ChatService {
                 break;
               }
             }
-          } catch (_) { /* try next selector */ }
+          } catch (_) {
+            /* try next selector */
+          }
         }
 
         if (!clicked) {
@@ -432,23 +449,31 @@ export class ChatService {
 
         if (!clicked) {
           // Last resort: press Enter
-          logger.warn(`Attempt ${attempt}: No send button found, pressing Enter...`);
+          logger.warn(
+            `Attempt ${attempt}: No send button found, pressing Enter...`,
+          );
           await page.keyboard.press("Enter");
         }
 
         // Verify generation started (stop button should appear within 5s)
         await new Promise((r) => setTimeout(r, 2000));
         const generationStarted = await page.evaluate(() => {
-          const stopBtn = document.querySelector('button[aria-label="Stop response"]');
+          const stopBtn = document.querySelector(
+            'button[aria-label="Stop response"]',
+          );
           return !!stopBtn;
         });
 
         if (generationStarted) {
-          logger.info(`Send verified: generation started on attempt ${attempt}`);
+          logger.info(
+            `Send verified: generation started on attempt ${attempt}`,
+          );
           return;
         }
 
-        logger.warn(`Attempt ${attempt}: Send didn't trigger generation, retrying...`);
+        logger.warn(
+          `Attempt ${attempt}: Send didn't trigger generation, retrying...`,
+        );
         await new Promise((r) => setTimeout(r, 1000));
       } catch (err) {
         logger.error(`Send attempt ${attempt} failed:`, err);
