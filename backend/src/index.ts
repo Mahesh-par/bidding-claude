@@ -12,6 +12,11 @@ const app = express();
 
 // Request Logger (IST Time)
 app.use((req, _, next) => {
+  // Skip logging for polling status requests to keep terminal clean
+  if (req.url.startsWith("/chat/status")) {
+    return next();
+  }
+
   const info =
     req.method +
     " " +

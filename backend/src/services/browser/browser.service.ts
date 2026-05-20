@@ -41,12 +41,15 @@ export class BrowserService {
     this.browser = await puppeteer.launch({
       headless,
       userDataDir: config.SESSION_DIR, // Persistence: saves session locally
-      protocolTimeout: 180000, // 3 minutes timeout for heavy processing
+      protocolTimeout: 600000, // 10 minutes timeout for heavy processing
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--window-size=1280,800',
-        '--disable-blink-features=AutomationControlled' // Helps avoid bot detection
+        '--disable-blink-features=AutomationControlled', // Helps avoid bot detection
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding'
       ],
       defaultViewport: null
     });

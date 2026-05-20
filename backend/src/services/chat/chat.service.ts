@@ -14,16 +14,25 @@ export class ChatService {
     onProgress?: (partialText: string) => void,
   ) {
     const browser = await browserService.launch(false);
+    const page = await browser.newPage();
 
-    // Reuse existing page if available to prevent tab accumulation
+    // Close the initial blank page to ensure a clean single-page browser
     const pages = await browser.pages();
-    const page = pages.length > 0 ? pages[0] : await browser.newPage();
+    if (pages.length > 1) {
+      try {
+        await pages[0].close();
+      } catch (e) {
+        // Ignore if already closed
+      }
+    }
 
     try {
       const url =
         "https://claude.ai/project/019df89e-e7c9-75f8-8ec9-d288f0f3396f";
       logger.info(`Navigating to Claude Chat: ${url}`);
-      await page.goto(url, { waitUntil: "networkidle2" });
+      await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+      // Extra buffer for heavy project pages
+      await new Promise((r) => setTimeout(r, 3000));
 
       // Handle attachments if any
       if (attachments.length > 0) {
@@ -110,6 +119,9 @@ export class ChatService {
       }
 
       throw error;
+    } finally {
+      logger.info("Closing browser after job completion...");
+      await browserService.close();
     }
   }
 
@@ -126,7 +138,7 @@ export class ChatService {
     const STABILIZATION_THRESHOLD = 15000;
     const startTime = Date.now();
 
-    while (Date.now() - startTime < 300000) {
+    while (Date.now() - startTime < 600000) {
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
 
       // Check for stop button using the exact aria-label from screenshot
@@ -228,16 +240,36 @@ export class ChatService {
         return "MD_FILE NOT FOUND PLEASE TRY AGAIN";
       });
 
-      if (
-        codeBlockContent === "MD_FILE NOT FOUND PLEASE TRY AGAIN" ||
-        codeBlockContent === "MESSAGE_CONTAINER_NOT_FOUND"
-      ) {
-        logger.warn(`Extraction result: ${codeBlockContent}`);
-      } else {
-        logger.info("Successfully extracted code block.");
+      let finalContent = codeBlockContent;
+      
+      // Strip markdown code fences if present at the start and end
+      // e.g. ```javascript\nCODE\n``` or just ```\nCODE\n```
+      if (finalContent.startsWith("```")) {
+        // Remove the first line (the ```fence)
+        const lines = finalContent.split("\n");
+        if (lines.length > 1 && lines[0].startsWith("```")) {
+          lines.shift();
+          // Also remove the last line if it's just ```
+          if (lines.length > 0 && lines[lines.length - 1].trim() === "```") {
+            lines.pop();
+          }
+          finalContent = lines.join("\n").trim();
+        } else {
+          // If it's all on one line or weirdly formatted
+          finalContent = finalContent.replace(/^```(?:\w+)?/, "").replace(/```$/, "").trim();
+        }
       }
 
-      return codeBlockContent;
+      if (
+        finalContent === "MD_FILE NOT FOUND PLEASE TRY AGAIN" ||
+        finalContent === "MESSAGE_CONTAINER_NOT_FOUND"
+      ) {
+        logger.warn(`Extraction result: ${finalContent}`);
+      } else {
+        logger.info("Successfully extracted and cleaned code block.");
+      }
+
+      return finalContent;
     } catch (error) {
       logger.error("Error in copyLastMessage", error);
       return "ERROR_DURING_EXTRACTION";
@@ -253,7 +285,7 @@ export class ChatService {
     prompt: string,
   ): Promise<void> {
     const inputSelector =
-      'div[contenteditable="true"], textarea, [role="textbox"]';
+      'div[contenteditable="true"], [data-testid="chat-input"], .ProseMirror, textarea, [role="textbox"]';
     const MAX_RETRIES = 3;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -264,16 +296,24 @@ export class ChatService {
 
         // Strategy 1: execCommand insertText (works best with React)
         const pasted = await page.evaluate((text) => {
-          const input = document.querySelector(
-            'div[contenteditable="true"], textarea, [role="textbox"]',
-          ) as HTMLElement;
+          const sel = 'div[contenteditable="true"], [data-testid="chat-input"], .ProseMirror, textarea, [role="textbox"]';
+          const input = document.querySelector(sel) as HTMLElement;
           if (!input) return false;
 
           input.focus();
+          
+          // Clear if needed (be careful with ProseMirror, but usually fine for fresh chats)
           if (input.tagName === "TEXTAREA") {
             (input as HTMLTextAreaElement).value = "";
-          } else {
-            input.innerHTML = "";
+          } else if (input.innerText.trim().length > 0) {
+            // Select all to replace
+            const range = document.createRange();
+            range.selectNodeContents(input);
+            const selection = window.getSelection();
+            if (selection) {
+              selection.removeAllRanges();
+              selection.addRange(range);
+            }
           }
 
           const success = document.execCommand("insertText", false, text);
@@ -287,13 +327,12 @@ export class ChatService {
 
         // Verify text was actually entered
         const currentText = await page.evaluate(() => {
-          const input = document.querySelector(
-            'div[contenteditable="true"], textarea, [role="textbox"]',
-          ) as HTMLElement;
+          const sel = 'div[contenteditable="true"], [data-testid="chat-input"], .ProseMirror, textarea, [role="textbox"]';
+          const input = document.querySelector(sel) as HTMLElement;
           if (!input) return "";
           return input.tagName === "TEXTAREA"
             ? (input as HTMLTextAreaElement).value
-            : input.innerText;
+            : (input as HTMLElement).innerText;
         });
 
         if (currentText && currentText.trim().length > 0) {
@@ -306,28 +345,31 @@ export class ChatService {
           `Attempt ${attempt}: execCommand returned empty. Trying clipboard paste...`,
         );
         await page.evaluate(async (text) => {
-          const input = document.querySelector(
-            'div[contenteditable="true"], textarea, [role="textbox"]',
-          ) as HTMLElement;
+          const sel = 'div[contenteditable="true"], [data-testid="chat-input"], .ProseMirror, textarea, [role="textbox"]';
+          const input = document.querySelector(sel) as HTMLElement;
           if (!input) return;
           input.focus();
 
           // Write to clipboard then paste
-          await navigator.clipboard.writeText(text);
-          document.execCommand("paste");
+          try {
+            await navigator.clipboard.writeText(text);
+            document.execCommand("paste");
+          } catch (e) {
+            // Fallback for clipboard
+            input.innerText = text;
+          }
         }, prompt);
 
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 800));
 
         // Re-verify
         const checkAgain = await page.evaluate(() => {
-          const input = document.querySelector(
-            'div[contenteditable="true"], textarea, [role="textbox"]',
-          ) as HTMLElement;
+          const sel = 'div[contenteditable="true"], [data-testid="chat-input"], .ProseMirror, textarea, [role="textbox"]';
+          const input = document.querySelector(sel) as HTMLElement;
           if (!input) return "";
           return input.tagName === "TEXTAREA"
             ? (input as HTMLTextAreaElement).value
-            : input.innerText;
+            : (input as HTMLElement).innerText;
         });
 
         if (checkAgain && checkAgain.trim().length > 0) {
