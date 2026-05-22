@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/env.js';
 import { User } from '../models/User.js';
+import { logger } from '../utils/logger.js';
 
 export interface AuthRequest extends Request {
   user?: any;
@@ -25,6 +26,8 @@ export const authentication = async (req: AuthRequest, res: Response, next: Next
         res.status(401).json({ message: 'Not authorized, user not found' });
         return;
       }
+
+      logger.info(`Authenticated user email: ${req.user.email} (${req.method} ${req.originalUrl})`);
 
       next();
     } catch (error) {
